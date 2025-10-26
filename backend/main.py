@@ -84,6 +84,16 @@ class SubtitleDetect:
         current_frame_no = 0
         subtitle_frame_no_box_dict = {}
         print('[Processing] start finding subtitles...')
+        # prepare debug output directory if enabled
+        save_frames = getattr(config, 'SAVE_DETECTED_FRAMES', False)
+        save_dir = None
+        if save_frames:
+            if getattr(config, 'SAVE_DETECTED_FRAMES_DIR', None):
+                save_dir = config.SAVE_DETECTED_FRAMES_DIR
+            else:
+                save_dir = os.path.join(os.path.dirname(self.video_path), f"{Path(self.video_path).stem}_detected_frames")
+            os.makedirs(save_dir, exist_ok=True)
+
         try:
             # load sub list from file
             sub_list = {}
@@ -95,6 +105,7 @@ class SubtitleDetect:
             subtitle_frame_no_box_dict = sub_list
         except FileNotFoundError:
             pass
+        
         while video_cap.isOpened():
             ret, frame = video_cap.read()
             # 如果读取视频帧失败（视频读到最后一帧）
@@ -110,18 +121,38 @@ class SubtitleDetect:
             coordinate_list = self.get_coordinates(dt_boxes.tolist())
             if coordinate_list:
                 temp_list = []
+
+                # If saving frames, draw boxes on a copy and save
+                if save_frames and save_dir is not None:
+                    debug_img = frame.copy()
+
                 for coordinate in coordinate_list:
                     xmin, xmax, ymin, ymax = coordinate
                     if self.sub_area is not None:
                         s_ymin, s_ymax, s_xmin, s_xmax = self.sub_area
-                        if (s_xmin <= xmin and xmax <= s_xmax
-                                and s_ymin <= ymin
-                                and ymax <= s_ymax):
-                            temp_list.append((xmin, xmax, ymin, ymax))
+
+                        # Prüfe auf Überschneidung mit der Sub-Area
+                        if xmin < s_xmax and xmax > s_xmin and ymin < s_ymax and ymax > s_ymin:
+                            # Clipping: Begrenze Box auf Sub-Area
+                            new_xmin = max(xmin, s_xmin)
+                            new_xmax = min(xmax, s_xmax)
+                            new_ymin = max(ymin, s_ymin)
+                            new_ymax = min(ymax, s_ymax)
+                            temp_list.append((new_xmin, new_xmax, new_ymin, new_ymax))
+                            cv2.rectangle(debug_img, (new_xmin, new_ymin), (new_xmax, new_ymax), (0, 0, 255), 2)
                     else:
                         temp_list.append((xmin, xmax, ymin, ymax))
-                if len(temp_list) > 0:
-                    subtitle_frame_no_box_dict[current_frame_no] = temp_list
+                subtitle_frame_no_box_dict[current_frame_no] = temp_list
+
+                # --- Frame speichern ---
+                if save_frames:
+                    fname = f"frame_{current_frame_no:06d}.png"
+                    save_path = os.path.join(save_dir, fname)
+                    try:
+                        # tofile vermeidet Probleme mit Unicode-Pfaden
+                        cv2.imencode('.png', debug_img)[1].tofile(save_path)
+                    except Exception:
+                        cv2.imwrite(save_path, debug_img)
 
             if current_frame_no % 100 == 0:
                 with open('sub_list.txt', 'w') as f:
