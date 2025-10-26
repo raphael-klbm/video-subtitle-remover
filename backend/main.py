@@ -131,7 +131,8 @@ class SubtitleDetect:
                             new_ymin = max(ymin, s_ymin)
                             new_ymax = min(ymax, s_ymax)
                             temp_list.append((new_xmin, new_xmax, new_ymin, new_ymax))
-                            cv2.rectangle(debug_img, (new_xmin, new_ymin), (new_xmax, new_ymax), (0, 0, 255), 2)
+                            if save_frames:
+                                cv2.rectangle(debug_img, (new_xmin, new_ymin), (new_xmax, new_ymax), (0, 0, 255), 2)
                     else:
                         temp_list.append((xmin, xmax, ymin, ymax))
                 subtitle_frame_no_box_dict[current_frame_no] = temp_list
