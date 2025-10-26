@@ -95,6 +95,13 @@ class InpaintMode(Enum):
 # ×××××××××××××××××××× [可以改] start ××××××××××××××××××××
 # 是否使用h264编码，如果需要安卓手机分享生成的视频，请打开该选项
 USE_H264 = True
+# If True, save every frame with detected bounding boxes for debugging.
+# Saved into either SAVE_DETECTED_FRAMES_DIR if set, or next to the input video
+# in a folder named <video_stem>_detected_frames.
+SAVE_DETECTED_FRAMES = False
+# Optional: set a directory path to store all debug frames. If empty, per-video
+# folders next to the video file will be used.
+SAVE_DETECTED_FRAMES_DIR = ""
 
 # ×××××××××× 通用设置 start ××××××××××
 """
