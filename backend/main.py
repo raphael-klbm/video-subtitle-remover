@@ -36,31 +36,23 @@ class SubtitleDetect:
         self.video_path = video_path
         self.sub_area = sub_area
 
-    @cached_property
-    def text_detector(self):
-        import paddle
-        paddle.disable_signal_handler()
-        from paddleocr.tools.infer import utility
-        from paddleocr.tools.infer.predict_det import TextDetector
-        # 获取参数对象
-        importlib.reload(config)
-        args = utility.parse_args()
-        args.det_algorithm = 'DB'
-        args.det_model_dir = self.convertToOnnxModelIfNeeded(config.DET_MODEL_PATH)
-        args.use_onnx=len(config.ONNX_PROVIDERS) > 0
-        args.onnx_providers=config.ONNX_PROVIDERS
-        return TextDetector(args)
-
     def detect_subtitle(self, img):
-        dt_boxes, elapse = self.text_detector(img)
-        return dt_boxes, elapse
+        from pytesseract import image_to_data, Output
+        d = image_to_data(img, lang="eng+chi_sim", output_type=Output.DICT)
+        n_boxes = len(d['level'])
+        dt_boxes = []
+        for i in range(n_boxes):
+            if d['conf'][i] > 0:
+                (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
+                dt_boxes.append(((x, y), (x + w, y + h), (x, y + h), (x + w, y)))
+        return dt_boxes, 0
 
     @staticmethod
     def get_coordinates(dt_box):
         """
-        从返回的检测框中获取坐标
-        :param dt_box 检测框返回结果
-        :return list 坐标点列表
+        Get coordinates from the returned detection boxes.
+        :param dt_box: The detection box result.
+        :return list: A list of coordinate points.
         """
         coordinate_list = list()
         if isinstance(dt_box, list):
@@ -118,7 +110,7 @@ class SubtitleDetect:
                 continue
 
             dt_boxes, elapse = self.detect_subtitle(frame)
-            coordinate_list = self.get_coordinates(dt_boxes.tolist())
+            coordinate_list = self.get_coordinates(dt_boxes)
             if coordinate_list:
                 temp_list = []
 
@@ -175,57 +167,9 @@ class SubtitleDetect:
         #             pass
         #     subtitle_frame_no_box_dict = self.prevent_missed_detection(subtitle_frame_no_box_dict)
         print('[Finished] Finished finding subtitles...')
-        new_subtitle_frame_no_box_dict = dict()
-        for key in subtitle_frame_no_box_dict.keys():
-            if len(subtitle_frame_no_box_dict[key]) > 0:
-                new_subtitle_frame_no_box_dict[key] = subtitle_frame_no_box_dict[key]
-        return new_subtitle_frame_no_box_dict
+        # remove empty entries
 
-    def convertToOnnxModelIfNeeded(self, model_dir, model_filename="inference.pdmodel", params_filename="inference.pdiparams", opset_version=14):
-        """Converts a Paddle model to ONNX if ONNX providers are available and the model does not already exist."""
-        
-        if not config.ONNX_PROVIDERS:
-            return model_dir
-        
-        onnx_model_path = os.path.join(model_dir, "model.onnx")
-
-        if os.path.exists(onnx_model_path):
-            print(f"ONNX model already exists: {onnx_model_path}. Skipping conversion.")
-            return onnx_model_path
-        
-        print(f"Converting Paddle model {model_dir} to ONNX...")
-        model_file = os.path.join(model_dir, model_filename)
-        params_file = os.path.join(model_dir, params_filename) if params_filename else ""
-
-        try:
-            import paddle2onnx
-            # Ensure the target directory exists
-            os.makedirs(os.path.dirname(onnx_model_path), exist_ok=True)
-
-            # Convert and save the model
-            onnx_model = paddle2onnx.export(
-                model_filename=model_file,
-                params_filename=params_file,
-                save_file=onnx_model_path,
-                opset_version=opset_version,
-                auto_upgrade_opset=True,
-                verbose=True,
-                enable_onnx_checker=True,
-                enable_experimental_op=True,
-                enable_optimize=True,
-                custom_op_info={},
-                deploy_backend="onnxruntime",
-                calibration_file="calibration.cache",
-                external_file=os.path.join(model_dir, "external_data"),
-                export_fp16_model=False,
-            )
-
-            print(f"Conversion successful. ONNX model saved to: {onnx_model_path}")
-            return onnx_model_path
-        except Exception as e:
-            print(f"Error during conversion: {e}")
-            return model_dir
-
+        return {k: v for k, v in subtitle_frame_no_box_dict.items() if v}
 
     @staticmethod
     def split_range_by_scene(intervals, points):
