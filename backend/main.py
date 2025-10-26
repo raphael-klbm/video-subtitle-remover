@@ -75,6 +75,8 @@ class SubtitleDetect:
         tbar = tqdm(total=int(frame_count), unit='frame', position=0, file=sys.__stdout__, desc='Subtitle Finding')
         current_frame_no = 0
         subtitle_frame_no_box_dict = {}
+        if self.sub_area is not None:
+            s_ymin, s_ymax, s_xmin, s_xmax = self.sub_area
         print('[Processing] start finding subtitles...')
         # prepare debug output directory if enabled
         save_frames = getattr(config, 'SAVE_DETECTED_FRAMES', False)
@@ -109,32 +111,30 @@ class SubtitleDetect:
                 tbar.update(1)
                 continue
 
-            dt_boxes, elapse = self.detect_subtitle(frame)
+            dt_boxes, _ = self.detect_subtitle(frame)
             coordinate_list = self.get_coordinates(dt_boxes)
             if coordinate_list:
                 temp_list = []
 
                 # If saving frames, draw boxes on a copy and save
-                if save_frames and save_dir is not None:
+                if save_frames:
                     debug_img = frame.copy()
 
                 for coordinate in coordinate_list:
                     xmin, xmax, ymin, ymax = coordinate
                     if self.sub_area is not None:
-                        s_ymin, s_ymax, s_xmin, s_xmax = self.sub_area
-
                         # Prüfe auf Überschneidung mit der Sub-Area
                         if xmin < s_xmax and xmax > s_xmin and ymin < s_ymax and ymax > s_ymin:
                             # Clipping: Begrenze Box auf Sub-Area
-                            new_xmin = max(xmin, s_xmin)
-                            new_xmax = min(xmax, s_xmax)
-                            new_ymin = max(ymin, s_ymin)
-                            new_ymax = min(ymax, s_ymax)
-                            temp_list.append((new_xmin, new_xmax, new_ymin, new_ymax))
-                            if save_frames:
-                                cv2.rectangle(debug_img, (new_xmin, new_ymin), (new_xmax, new_ymax), (0, 0, 255), 2)
-                    else:
-                        temp_list.append((xmin, xmax, ymin, ymax))
+                            xmin = max(xmin, s_xmin)
+                            xmax = min(xmax, s_xmax)
+                            ymin = max(ymin, s_ymin)
+                            ymax = min(ymax, s_ymax)
+
+                    if save_frames:
+                        cv2.rectangle(debug_img, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+
+                    temp_list.append((xmin, xmax, ymin, ymax))
                 subtitle_frame_no_box_dict[current_frame_no] = temp_list
 
                 # --- Frame speichern ---
@@ -169,7 +169,6 @@ class SubtitleDetect:
         #     subtitle_frame_no_box_dict = self.prevent_missed_detection(subtitle_frame_no_box_dict)
         print('[Finished] Finished finding subtitles...')
         # remove empty entries
-
         return {k: v for k, v in subtitle_frame_no_box_dict.items() if v}
 
     @staticmethod
