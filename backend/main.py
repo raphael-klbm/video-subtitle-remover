@@ -111,41 +111,60 @@ class SubtitleDetect:
                 tbar.update(1)
                 continue
 
-            dt_boxes, _ = self.detect_subtitle(frame)
+            sub_img = frame[s_ymin:s_ymax, s_xmin:s_xmax]
+
+            # --- Frame speichern ---
+            if save_frames:
+                fname = f"sub_frame_{current_frame_no:06d}.png"
+                save_path = os.path.join(save_dir, fname)
+                try:
+                    # tofile vermeidet Probleme mit Unicode-Pfaden
+                    cv2.imencode('.png', sub_img)[1].tofile(save_path)
+                except Exception:
+                    cv2.imwrite(save_path, sub_img)
+
+            dt_boxes, _ = self.detect_subtitle(sub_img)
             coordinate_list = self.get_coordinates(dt_boxes)
-            if coordinate_list:
-                temp_list = []
+            # if coordinate_list:
+            temp_list = []
 
-                # If saving frames, draw boxes on a copy and save
+            # If saving frames, draw boxes on a copy and save
+            if save_frames:
+                debug_img = frame.copy()
+
+            for coordinate in coordinate_list:
+                xmin, xmax, ymin, ymax = coordinate
+                # move the dt_boxes back in to the whole image space
+                xmin += s_xmin
+                xmax += s_xmin
+                ymin += s_ymin
+                ymax += s_ymin
+                if self.sub_area is not None:
+                    # Prüfe auf Überschneidung mit der Sub-Area
+                    if xmin < s_xmax and xmax > s_xmin and ymin < s_ymax and ymax > s_ymin:
+                        # Clipping: Begrenze Box auf Sub-Area
+                        xmin = max(xmin, s_xmin)
+                        xmax = min(xmax, s_xmax)
+                        ymin = max(ymin, s_ymin)
+                        ymax = min(ymax, s_ymax)
+
                 if save_frames:
-                    debug_img = frame.copy()
+                    cv2.rectangle(debug_img, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
 
-                for coordinate in coordinate_list:
-                    xmin, xmax, ymin, ymax = coordinate
-                    if self.sub_area is not None:
-                        # Prüfe auf Überschneidung mit der Sub-Area
-                        if xmin < s_xmax and xmax > s_xmin and ymin < s_ymax and ymax > s_ymin:
-                            # Clipping: Begrenze Box auf Sub-Area
-                            xmin = max(xmin, s_xmin)
-                            xmax = min(xmax, s_xmax)
-                            ymin = max(ymin, s_ymin)
-                            ymax = min(ymax, s_ymax)
+                temp_list.append((xmin, xmax, ymin, ymax))
+            subtitle_frame_no_box_dict[current_frame_no] = temp_list
 
-                    if save_frames:
-                        cv2.rectangle(debug_img, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+            # --- Frame speichern ---
+            if save_frames:
+                fname = f"frame_{current_frame_no:06d}.png"
+                save_path = os.path.join(save_dir, fname)
+                try:
+                    # tofile vermeidet Probleme mit Unicode-Pfaden
+                    cv2.imencode('.png', debug_img)[1].tofile(save_path)
+                except Exception:
+                    cv2.imwrite(save_path, debug_img)
 
-                    temp_list.append((xmin, xmax, ymin, ymax))
-                subtitle_frame_no_box_dict[current_frame_no] = temp_list
-
-                # --- Frame speichern ---
-                if save_frames:
-                    fname = f"frame_{current_frame_no:06d}.png"
-                    save_path = os.path.join(save_dir, fname)
-                    try:
-                        # tofile vermeidet Probleme mit Unicode-Pfaden
-                        cv2.imencode('.png', debug_img)[1].tofile(save_path)
-                    except Exception:
-                        cv2.imwrite(save_path, debug_img)
+            #fi
 
             if current_frame_no % 100 == 0:
                 with open('sub_list.txt', 'w') as f:
