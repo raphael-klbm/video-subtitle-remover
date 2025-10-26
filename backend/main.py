@@ -84,6 +84,17 @@ class SubtitleDetect:
         current_frame_no = 0
         subtitle_frame_no_box_dict = {}
         print('[Processing] start finding subtitles...')
+        try:
+            # load sub list from file
+            sub_list = {}
+            with open('sub_list.txt', 'r') as f:
+                for line in f:
+                    frame, areas = line.strip().split(': ')
+                    frame = frame.removeprefix('Frame ')
+                    sub_list[int(frame)] = eval(areas)
+            subtitle_frame_no_box_dict = sub_list
+        except FileNotFoundError:
+            pass
         while video_cap.isOpened():
             ret, frame = video_cap.read()
             # 如果读取视频帧失败（视频读到最后一帧）
@@ -91,6 +102,10 @@ class SubtitleDetect:
                 break
             # 读取视频帧成功
             current_frame_no += 1
+            if current_frame_no in subtitle_frame_no_box_dict.keys():
+                tbar.update(1)
+                continue
+
             dt_boxes, elapse = self.detect_subtitle(frame)
             coordinate_list = self.get_coordinates(dt_boxes.tolist())
             if coordinate_list:
@@ -107,6 +122,12 @@ class SubtitleDetect:
                         temp_list.append((xmin, xmax, ymin, ymax))
                 if len(temp_list) > 0:
                     subtitle_frame_no_box_dict[current_frame_no] = temp_list
+
+            if current_frame_no % 100 == 0:
+                with open('sub_list.txt', 'w') as f:
+                    for frame, areas in subtitle_frame_no_box_dict.items():
+                        f.write(f'Frame {frame}: {areas}\n')
+
             tbar.update(1)
             if sub_remover:
                 sub_remover.progress_total = (100 * float(current_frame_no) / float(frame_count)) // 2
